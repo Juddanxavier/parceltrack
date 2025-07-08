@@ -1,0 +1,225 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LeadStatus {
+  new
+  contacted
+  qualified
+  converted
+  rejected
+}
+
+model Session {
+  id          String   @id
+  token       String   @unique
+  userId      String   @map("user_id")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  data        Json?
+  
+  // Relationships
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  name          String   @db.VarChar(100)
+  email         String   @db.VarChar(150)
+  emailVerified Boolean  @default(false)
+  image         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  role          String   @default("user") @db.VarChar(50)
+
+  // Relationships
+  sessions      Session[]
+  leadsOwned    Lead[]           @relation("LeadClient")
+  leadsAssigned Lead[]           @relation("LeadAssignee")
+  leadComments  LeadComment[]
+  attachments   LeadAttachment[]
+  notifications Notification[]
+  shipments     Shipment[]
+
+  banned     Boolean?
+  banReason  String?
+  banExpires DateTime?
+accounts   Account[]
+
+  @@unique([email])
+  @@map("users")
+}
+
+model Lead {
+  id                 String     @id @default(uuid())
+  name               String     @db.VarChar(100)
+  email              String     @db.VarChar(150)
+  phone              String     @db.VarChar(20)
+  originCountry      String     @db.Char(2)
+  destinationCountry String     @db.Char(2)
+  parcelType         String     @db.VarChar(100)
+  weight             Decimal    @db.Decimal(8, 2)
+  notes              String     @db.Text
+  status             LeadStatus @default(new)
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  clientId           String?    @map("client_id")
+  assignedTo         String?    @map("assigned_to")
+
+  // Relationships
+  client        User?            @relation("LeadClient", fields: [clientId], references: [id])
+  assignedAdmin User?            @relation("LeadAssignee", fields: [assignedTo], references: [id])
+  comments      LeadComment[]
+  attachments   LeadAttachment[]
+  notifications Notification[]
+
+  @@index([clientId])
+  @@index([assignedTo])
+  @@index([status])
+  @@map("leads")
+}
+
+model LeadComment {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  leadId    String   @map("lead_id")
+  userId    String   @map("user_id")
+
+  // Relationships
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([leadId])
+  @@index([userId])
+  @@map("lead_comments")
+}
+
+model LeadAttachment {
+  id          String   @id @default(uuid())
+  fileName    String   @map("file_name") @db.VarChar(255)
+  fileSize    Int      @map("file_size")
+  contentType String   @map("content_type") @db.VarChar(100)
+  path        String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  leadId      String   @map("lead_id")
+  userId      String   @map("user_id")
+
+  // Relationships
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([leadId])
+  @@index([userId])
+  @@map("lead_attachments")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(200)
+  message   String   @db.Text
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  leadId    String?  @map("lead_id")
+  userId    String   @map("user_id")
+
+  // Relationships
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  user User  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([leadId])
+  @@index([type])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+enum TrackingStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  EXCEPTION
+  RETURNED
+}
+
+model Shipment {
+  id                    String         @id @default(uuid())
+  trackingNumber        String         @unique @map("tracking_number")
+  carrierTrackingNumber String?        @map("carrier_tracking_number")
+  carrier               String?        @db.VarChar(100)
+  status                TrackingStatus @default(PENDING)
+  estimatedDelivery     DateTime?      @map("estimated_delivery")
+  actualDelivery        DateTime?      @map("actual_delivery")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  userId                String?        @map("user_id")
+
+  // Relationships
+  user   User?           @relation(fields: [userId], references: [id])
+  events TrackingEvent[]
+
+  @@index([userId])
+  @@index([trackingNumber])
+  @@map("shipments")
+}
+
+model TrackingEvent {
+  id          String         @id @default(uuid())
+  status      TrackingStatus
+  description String         @db.Text
+  location    String?        @db.VarChar(200)
+  timestamp   DateTime
+  createdAt   DateTime       @default(now()) @map("created_at")
+  shipmentId  String         @map("shipment_id")
+
+  // Relationships
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@map("tracking_events")
+}
+
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}

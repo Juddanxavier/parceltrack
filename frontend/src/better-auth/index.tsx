@@ -1,46 +1,103 @@
-import { createContext, useContext, useCallback, useState } from 'react'
-import { authClient } from '../lib/client'
-import type { ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { authClient } from './auth-client';
 
-interface User {
-  id: string
-  email: string
-  name?: string
-  role?: 'user' | 'admin'
-  [key: string]: any
+export interface AuthError {
+  message: string;
+  code: string;
+  statusCode?: number;
 }
 
-interface AuthError {
-  message: string
-  code?: string
-  statusCode?: number
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
 }
 
-interface BetterAuthContextType {
-  user: User | null
-  loading: boolean
-  error: AuthError | null
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: AuthError }>
-  register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: AuthError }>
-  logout: () => Promise<void>
-  clearError: () => void
-  refreshUser: () => Promise<void>
+interface SignInCredentials {
+  email: string;
+  password: string;
+  remember?: boolean;
 }
 
-const BetterAuthContext = createContext<BetterAuthContextType | undefined>(
-  undefined,
-)
+interface SignUpData {
+  email: string;
+  password: string;
+  name: string;
+}
+
+interface AuthContextValue {
+  user: User | null;
+  loading: boolean;
+  error: AuthError | null;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  login: (credentials: SignInCredentials) => Promise<{ success: boolean; error?: AuthError }>;
+  register: (data: SignUpData) => Promise<{ success: boolean; error?: AuthError }>;
+  logout: () => Promise<void>;
+  clearError: () => void;
+  refreshUser: () => Promise<void>;
+}
+
+const BetterAuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+// Helper function to create auth errors
+const createAuthError = (message: string, code: string, statusCode?: number): AuthError => ({
+  message,
+  code,
+  statusCode
+});
+
+// Helper function to handle unexpected errors
+const handleUnexpectedError = (error: any): AuthError => {
+  console.error('Unexpected auth error:', error);
+  return createAuthError(
+    error.message || 'An unexpected error occurred',
+    'UNEXPECTED_ERROR'
+  );
+};
 
 export function BetterAuthProvider({ children }: { children: ReactNode }) {
-  const [authError, setAuthError] = useState<AuthError | null>(null)
-  
-  // Use the session hook for user and loading state
-  const {
-    data: sessionData,
-    isPending: loading,
-    error: sessionError,
-    refetch,
-  } = authClient.useSession()
+  const [authError, setAuthError] = useState<AuthError | null>(null);
+  const [session, setSession] = useState<{ user: User; role: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchSession = useCallback(async () => {
+    try {
+      const { data, error } = await authClient.getSession();
+      if (error) {
+        setAuthError(createAuthError(error.message, 'SESSION_ERROR'));
+        setSession(null);
+      } else {
+        setSession(data);
+        setAuthError(null);
+      }
+    } catch (error) {
+      setAuthError(handleUnexpectedError(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSession();
+  }, [fetchSession]);
+
+// Set up session refresh interval
+useEffect(() => {
+  if (!session) return;
+
+  const interval = setInterval(() => {
+    fetchSession();
+  }, 5 * 60 * 1000); // Refresh every 5 minutes
+
+  return () => clearInterval(interval);
+}, [session, fetchSession]);
+
+// Initial session fetch
+useEffect(() => {
+  fetchSession();
+}, [fetchSession]);
 
   // Clear error function
   const clearError = useCallback(() => {
@@ -50,7 +107,7 @@ export function BetterAuthProvider({ children }: { children: ReactNode }) {
   // Refresh user data
   const refreshUser = useCallback(async () => {
     try {
-      await refetch()
+      await fetchSession()
     } catch (error) {
       console.error('Failed to refresh user session:', error)
       setAuthError({
@@ -58,106 +115,89 @@ export function BetterAuthProvider({ children }: { children: ReactNode }) {
         code: 'REFRESH_ERROR'
       })
     }
-  }, [refetch])
+  }, [fetchSession])
 
   // Use session data directly - no need for additional API calls!
-  const user = sessionData?.user ? {
-    ...sessionData.user,
-    role: (sessionData.user.role || 'user') as 'user' | 'admin'
-  } : null
-  
-  const isLoading = loading
-  const error = authError || (sessionError ? { message: sessionError.message || 'Authentication error', code: 'SESSION_ERROR' } : null)
 
-  // Login method with enhanced error handling
-  const login = useCallback(
-    async (email: string, password: string) => {
-      try {
-        setAuthError(null)
-        const { error } = await authClient.signIn.email({ email, password })
-        
-        if (error) {
-          const authError: AuthError = {
-            message: error.message || 'Login failed',
-            code: error.code || 'LOGIN_ERROR',
-            statusCode: error.status
-          }
-          setAuthError(authError)
-          return { success: false, error: authError }
-        }
-        
-        await refetch()
-        return { success: true }
-      } catch (err: any) {
-        const authError: AuthError = {
-          message: err.message || 'An unexpected error occurred during login',
-          code: 'UNEXPECTED_LOGIN_ERROR'
-        }
-        setAuthError(authError)
-        return { success: false, error: authError }
+  const user = session?.user || null;
+  const isAuthenticated = !!user;
+  const isAdmin = session?.role === 'admin';
+
+  const login = useCallback(async ({ email, password, remember }: SignInCredentials) => {
+    try {
+      setAuthError(null);
+      const { data, error } = await authClient.signIn.email({ email, password });
+
+      if (error) {
+        const authError = createAuthError(error.message, 'AUTH_ERROR');
+        setAuthError(authError);
+        return { success: false, error: authError };
       }
-    },
-    [refetch],
-  )
+
+      await fetchSession();
+      return { success: true };
+    } catch (error) {
+      const authError = handleUnexpectedError(error);
+      setAuthError(authError);
+      return { success: false, error: authError };
+    }
+  }, [fetchSession]);
 
   // Register method with enhanced error handling
-  const register = useCallback(
-    async (email: string, password: string, name: string) => {
-      try {
-        setAuthError(null)
-        const { error } = await authClient.signUp.email({ email, password, name })
-        
-        if (error) {
-          const authError: AuthError = {
-            message: error.message || 'Registration failed',
-            code: error.code || 'REGISTER_ERROR',
-            statusCode: error.status
-          }
-          setAuthError(authError)
-          return { success: false, error: authError }
-        }
-        
-        await refetch()
-        return { success: true }
-      } catch (err: any) {
-        const authError: AuthError = {
-          message: err.message || 'An unexpected error occurred during registration',
-          code: 'UNEXPECTED_REGISTER_ERROR'
-        }
-        setAuthError(authError)
-        return { success: false, error: authError }
+  const register = useCallback(async ({ email, password, name }: SignUpData) => {
+    try {
+      setAuthError(null);
+      const { data, error } = await authClient.signUp.email({ email, password, name });
+      
+      if (error) {
+        const authError = createAuthError(
+          error.message || 'Registration failed',
+          error.code || 'AUTH_ERROR',
+          error.statusCode
+        );
+        setAuthError(authError);
+        return { success: false, error: authError };
       }
-    },
-    [refetch],
-  )
+      
+      await fetchSession();
+      return { success: true, data };
+    } catch (err) {
+      const authError = handleUnexpectedError(err);
+      setAuthError(authError);
+      return { success: false, error: authError };
+    }
+  }, [fetchSession]);
 
   // Logout method with enhanced error handling
   const logout = useCallback(async () => {
     try {
-      setAuthError(null)
-      await authClient.signOut()
-      await refetch()
-    } catch (err: any) {
-      console.error('Logout error:', err)
+      setAuthError(null);
+      await authClient.signOut();
+      // Clear all auth data
+      setSession(null);
+    } catch (err) {
+      console.error('Logout error:', err);
       // Even if logout fails, clear local state
-      setAuthError({
-        message: 'Logout completed with errors',
-        code: 'LOGOUT_ERROR'
-      })
+      setAuthError(createAuthError(
+        'Logout completed with errors',
+        'AUTH_ERROR'
+      ));
     }
-  }, [refetch])
+  }, [])
 
   return (
     <BetterAuthContext.Provider
-      value={{ 
-        user, 
-        loading: isLoading, 
-        error, 
-        login, 
-        register, 
-        logout, 
+      value={{
+        user: session?.user || null,
+        loading,
+        error: authError,
+        isAuthenticated,
+        isAdmin,
+        login,
+        register,
+        logout,
         clearError,
-        refreshUser 
+        refreshUser
       }}
     >
       {children}

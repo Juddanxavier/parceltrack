@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useBetterAuth } from 'better-auth/react';
+import { useBetterAuth } from '../better-auth';
 import { clearAllCache } from '../lib/cache';
 
 interface AuthUser {

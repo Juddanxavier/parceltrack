@@ -1,5 +1,5 @@
 import { LEAD_STATUSES, type LeadStatus } from '../types/leads.ts';
-import api from './api';
+import api from '@/config/api';
 
 interface LeadFilters {
   status?: LeadStatus;
@@ -93,14 +93,28 @@ export const leadsAPI = {
     if (filters.page) params.append('page', filters.page.toString());
     if (filters.limit) params.append('limit', filters.limit.toString());
 
-    const response = await api.get(`/leads${params.toString() ? `?${params}` : ''}`);
-    return response.data;
+    try {
+      console.log('Fetching leads with params:', params.toString());
+      const response = await api.get(`/leads${params.toString() ? `?${params}` : ''}`);
+      console.log('Leads response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching leads:', error);
+      throw error;
+    }
   },
 
   // Get lead statistics
   getStats: async (): Promise<LeadStats> => {
-    const response = await api.get('/leads/stats');
-    return response.data;
+    try {
+      console.log('Fetching lead stats');
+      const response = await api.get('/leads/stats');
+      console.log('Lead stats response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching lead stats:', error);
+      throw error;
+    }
   },
 
   // Get single lead details

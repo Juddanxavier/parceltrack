@@ -149,6 +149,22 @@ export const betterAuthAdminAPI = {
       return response.data
     })
   },
+
+  banUser: async (userId: string, banUntil?: string): Promise<{ message: string }> => {
+    await throttleRequest(`/api/admin/users/${userId}/ban`)
+    return await retryWithBackoff(async () => {
+      const response = await api.post(`/api/admin/users/${userId}/ban`, { banUntil })
+      return response.data
+    })
+  },
+
+  unbanUser: async (userId: string): Promise<{ message: string }> => {
+    await throttleRequest(`/api/admin/users/${userId}/unban`)
+    return await retryWithBackoff(async () => {
+      const response = await api.post(`/api/admin/users/${userId}/unban`)
+      return response.data
+    })
+  },
 }
 
 // User Management API functions (Legacy/Custom endpoints - keeping for backward compatibility)

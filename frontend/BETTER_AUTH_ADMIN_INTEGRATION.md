@@ -10,10 +10,8 @@ This document summarizes the integration of Better Auth admin plugin endpoints i
 #### New Better Auth Admin API Functions
 - **`betterAuthAdminAPI.listUsers()`** - List all users using Better Auth admin plugin
 - **`betterAuthAdminAPI.setRole(userId, role)`** - Set user role (user/admin)
-- **`betterAuthAdminAPI.banUser(userId, banUntil?)`** - Ban a user with optional expiry
+- **`betterAuthAdminAPI.banUser(userId, banUntil?)`** - Ban a user
 - **`betterAuthAdminAPI.unbanUser(userId)`** - Unban a user
-- **`betterAuthAdminAPI.impersonateUser(userId)`** - Impersonate a user
-- **`betterAuthAdminAPI.stopImpersonation()`** - Stop impersonation
 - **`betterAuthAdminAPI.createUser(userData)`** - Create user via Better Auth admin
 - **`betterAuthAdminAPI.removeUser(userId)`** - Remove user via Better Auth admin
 
@@ -87,14 +85,12 @@ The integration is designed with graceful fallbacks:
 The frontend now integrates with these Better Auth admin plugin endpoints:
 
 ```
-GET    /api/admin/list-users       - List all users
-POST   /api/admin/set-role         - Set user role
-POST   /api/admin/ban-user         - Ban user
-POST   /api/admin/unban-user       - Unban user
-POST   /api/admin/impersonate      - Impersonate user
-POST   /api/admin/stop-impersonate - Stop impersonation
-POST   /api/admin/create-user      - Create user
-POST   /api/admin/remove-user      - Remove user
+GET    /api/admin/users              - List all users
+POST   /api/admin/users/:userId/role - Set user role
+POST   /api/admin/users/:userId/ban  - Ban user
+POST   /api/admin/users/:userId/unban - Unban user
+POST   /api/admin/users              - Create user
+DELETE /api/admin/users/:userId      - Remove user
 ```
 
 ## Usage Examples

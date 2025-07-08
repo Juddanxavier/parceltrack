@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLeads } from '@/hooks/useLeads';
 import { useQueryClient } from '@tanstack/react-query';
-import { useBetterAuth } from '@/better-auth';
 import { format } from 'date-fns';
 import { LEAD_STATUSES, type LeadStatus } from '@/types/leads';
 
@@ -56,16 +55,6 @@ const statusColors = {
 };
 
 export function LeadsDashboard() {
-  // Ensure user is authenticated and has admin role
-  const { loading: isLoadingAuth, isAdmin, isAuthenticated } = useBetterAuth();
-
-  // Redirect if not authenticated or not admin
-  useEffect(() => {
-    if (!isLoadingAuth && (!isAuthenticated || !isAdmin)) {
-      window.location.href = '/auth/signin';
-    }
-  }, [isLoadingAuth, isAuthenticated, isAdmin]);
-
   // State
   const queryClient = useQueryClient();
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -196,7 +185,7 @@ export function LeadsDashboard() {
         </div>
       </div>
 
-      {isLoadingAuth || isLoading ? (
+      {isLoading ? (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
